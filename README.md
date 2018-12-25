@@ -1,11 +1,14 @@
 # PowerC2
 
-Simple Powershell Command & Control Server
-
 ## Description
 
-This server provides a simple interface in which an individual can conduct C2 operations.
-It provides basic functionality that a Pentester might need, implemented client side.
+PowerShell-based Command & Control Server designed for pentesters
+
+## Installation
+
+Run PowerC2.ps1 to initialize a PowerC2 server.
+
+In PowerAgent.ps1, add the IP address of your server and the port for it to connect back on.
 
 ## Example
 
@@ -13,17 +16,6 @@ It provides basic functionality that a Pentester might need, implemented client 
 
 Initializing Shell.........OK
 
-__________                            _________  ________  
-\______   \______  _  __ ___________  \_   ___ \ \_____  \ 
-
- |     ___/  _ \ \/ \/ // __ \_  __ \ /    \  \/  /  ____/ 
- 
- |    |  (  <_> )     /\  ___/|  | \/ \     \____/       \ 
- 
- |____|   \____/ \/\_/  \___  >__|     \______  /\_______ \
- 
-                            \/                \/         \/
-                            
 Welcome to Power C2
 
 Type HELP to list the commands available
